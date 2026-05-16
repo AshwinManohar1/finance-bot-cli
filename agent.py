@@ -9,8 +9,9 @@ MAX_REACT_STEPS = 3
 
 
 def _process_transactions(txns: list, days: int) -> dict:
-    from datetime import timedelta
-    cutoff = (_date.today() - timedelta(days=days)).isoformat()
+    from datetime import datetime, timedelta
+    today = datetime.strptime(prompts.SESSION_DATE, "%Y-%m-%d").date()
+    cutoff = (today - timedelta(days=days)).isoformat()
     filtered = [t for t in txns if t["date"] >= cutoff]
     totals: dict = {}
     for t in filtered:
@@ -101,7 +102,7 @@ def classify_intent(client, user_input: str) -> str:
         return "in_scope"
 
 
-def run_turn(client, messages: list, session_facts: list, session: int) -> str:
+def run_turn(client, messages: list, session_facts: list, session: int, log=print) -> str:
     try:
         for _ in range(MAX_REACT_STEPS):
             resp = client.chat.completions.create(
@@ -137,8 +138,8 @@ def run_turn(client, messages: list, session_facts: list, session: int) -> str:
                         print(f"  [tool error] {name}: {e}")
                         result = {"error": str(e)}
 
-                    print(f"\n  [tool]   {name}({json.dumps(args)})")
-                    print(f"  [result] {json.dumps(result)[:200]}")
+                    log(f"\n  [tool]   {name}({json.dumps(args)})")
+                    log(f"  [result] {json.dumps(result)[:200]}")
 
                     messages.append({
                         "role": "tool",
@@ -181,14 +182,22 @@ def main():
         {"role": "assistant", "content": "I have your context. How can I help?"},
     ]
 
-    print(f"\n=== Finance Agent — Session {session} ({prompts.USER_PROFILE['name']}) ===")
+    transcript_path = f"transcript_session{session}.txt"
+    transcript = open(transcript_path, "w")
+
+    def log(line: str = ""):
+        print(line)
+        transcript.write(line + "\n")
+        transcript.flush()
+
+    log(f"\n=== Finance Agent — Session {session} ({prompts.USER_PROFILE['name']}) ===")
     if memory_data["facts"]:
-        print(f"[memory] loaded {len(memory_data['facts'])} fact(s) from previous sessions:")
+        log(f"[memory] loaded {len(memory_data['facts'])} fact(s) from previous sessions:")
         for f in memory_data["facts"]:
-            print(f"  - {f['content']}")
+            log(f"  - {f['content']}")
     else:
-        print("[memory] no previous session memory found")
-    print("Type 'exit' to end the session.\n")
+        log("[memory] no previous session memory found")
+    log("Type 'exit' to end the session.\n")
 
     try:
         while True:
@@ -196,26 +205,32 @@ def main():
             if not user_input:
                 continue
             if user_input.lower() == "exit":
+                transcript.write("You: exit\n")
                 break
+
+            transcript.write(f"You: {user_input}\n")
+            transcript.flush()
 
             intent = classify_intent(client, user_input)
             if intent == "out_of_scope":
-                print(f"\nAgent: {prompts.OUT_OF_SCOPE}\n")
+                log(f"\nAgent: {prompts.OUT_OF_SCOPE}\n")
                 continue
 
             messages.append({"role": "user", "content": user_input})
-            reply = run_turn(client, messages, session_facts, session)
-            print(f"\nAgent: {reply}\n")
+            reply = run_turn(client, messages, session_facts, session, log)
+            log(f"\nAgent: {reply}\n")
 
     except KeyboardInterrupt:
-        print("\n\nSession interrupted.")
+        log("\n\nSession interrupted.")
     finally:
-        print("\n[Saving session memory...]")
+        log("\n[Saving session memory...]")
         try:
             mem.extract_and_save(messages, client, memory_data, session_facts, session, user_id)
-            print(f"[Done. memory_{user_id}.json updated for session {session}.]\n")
+            log(f"[Done. memory_{user_id}.json updated for session {session}.]\n")
         except Exception as e:
-            print(f"[Memory save failed: {e}]\n")
+            log(f"[Memory save failed: {e}]\n")
+        transcript.close()
+        print(f"[Transcript saved to {transcript_path}]")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 from datetime import date
+from tools import CURRENT_SESSION
 
 USER_PROFILE = {
     "name": "Priya Sharma",
@@ -60,6 +61,9 @@ Return a JSON array of strings. Each string is one self-contained fact written a
 
 # ── Out-of-scope response ─────────────────────────────────────────────────────
 
+_SESSION_DATES = {1: "2025-11-03", 2: "2025-11-06"}
+SESSION_DATE = _SESSION_DATES.get(CURRENT_SESSION, date.today().isoformat())
+
 OUT_OF_SCOPE = (
     "I'm a personal finance companion. I can help with savings planning, "
     "spending analysis, upcoming bills, and financial decisions. "
@@ -69,7 +73,7 @@ OUT_OF_SCOPE = (
 # ── User context builder ──────────────────────────────────────────────────────
 
 def build_user_context(profile: dict, facts: list, session: int) -> str:
-    today = date.today().isoformat()
+    today = SESSION_DATE
 
     memory_section = ""
     if facts:
